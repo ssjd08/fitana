@@ -1,0 +1,46 @@
+from rest_framework.permissions import IsAdminUser, AllowAny
+from rest_framework.generics import ListCreateAPIView, RetrieveAPIView, RetrieveUpdateDestroyAPIView
+from .serializers import GoalSerializer, GoalWithQuestionsSerializer, QuestionSerializer
+from .models import Goal, Question
+
+
+class GoalListCreateView(ListCreateAPIView):
+    """
+    List all goals or create a new goal.
+    Only admins can create goals.
+    """
+    serializer_class = GoalSerializer
+    queryset = Goal.objects.all()
+    
+    def get_permissions(self):
+        if self.request.method == "POST":  # Fixed: POST should be uppercase
+            # Only admin can create goal
+            return [IsAdminUser()]
+        return [AllowAny()]
+
+
+class GoalDetailView(RetrieveAPIView):
+    """
+    Retrieve a goal with all its associated questions and choices.
+    """
+    serializer_class = GoalWithQuestionsSerializer
+    queryset = Goal.objects.prefetch_related("questions__choises").all()  # Fixed: prefetch choices too
+    lookup_field = 'pk'  # Can be changed to 'name' if you want to lookup by goal name
+
+
+class QuestionListCreateView(ListCreateAPIView):
+    """
+    List all questions or create a new question.
+    """
+    serializer_class = QuestionSerializer
+    queryset = Question.objects.select_related('goal').all()  # Optimize query
+    permission_classes = [AllowAny]  # Add explicit permissions
+    
+    
+class QuestionDetailView(RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve a question with all its choices.
+    """
+    serializer_class = QuestionSerializer
+    queryset = Question.objects.prefetch_related('choises').all()
+    lookup_field = 'pk'

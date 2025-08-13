@@ -56,6 +56,7 @@ urlpatterns = [
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
     path('admin/', admin.site.urls),
     path('auth/', include('accounts.urls')),
+    path('questionnaire/', include('questionnaire.urls')),
     
     # Swagger URLs
     re_path(r'^swagger(?P<format>\.json|\.yaml)$', 
@@ -67,5 +68,6 @@ urlpatterns = [
     re_path(r'^redoc/$', 
             schema_view.with_ui('redoc', cache_timeout=0), 
             name='schema-redoc'),
+    
     
 ] + debug_toolbar_urls()
