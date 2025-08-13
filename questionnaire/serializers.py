@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Question, Choise, Goal
+from .models import Question, Choise, Goal, Answer
 
 class GoalSerializer(serializers.ModelSerializer):
     class Meta:
@@ -105,3 +105,47 @@ class GoalWithQuestionsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Goal
         fields = ["id", "name", "questions"]
+        
+        
+class AnswerSerializer(serializers.ModelSerializer):
+    # Accept single choice by ID
+    choice_answer_id = serializers.IntegerField(write_only=True, required=False)
+    # Accept multi choice by IDs
+    multi_choice_ids = serializers.ListField(
+        child=serializers.IntegerField(), write_only=True, required=False
+    )
+
+    class Meta:
+        model = Answer
+        fields = [
+            "id",
+            "user",
+            "question",
+            "text_answer",
+            "numeric_answer",
+            "choice_answer",
+            "multi_choice_answer",
+            "choice_answer_id",
+            "multi_choice_ids",
+        ]
+        read_only_fields = ["choice_answer", "multi_choice_answer"]
+
+    def create(self, validated_data):
+        choice_id = validated_data.pop("choice_answer_id", None)
+        multi_ids = validated_data.pop("multi_choice_ids", [])
+        
+        answer = Answer.objects.create(**validated_data)
+
+        if choice_id:
+            try:
+                choice = Choise.objects.get(id=choice_id, question=answer.question)
+                answer.choice_answer = choice
+                answer.save()
+            except Choise.DoesNotExist:
+                raise serializers.ValidationError("Invalid choice for this question.")
+
+        if multi_ids:
+            choices = Choise.objects.filter(id__in=multi_ids, question=answer.question)
+            answer.multi_choice_answer.set(choices)
+
+        return answer

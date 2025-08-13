@@ -20,11 +20,13 @@ class QuestionAdmin(admin.ModelAdmin):
 
     def is_single_choice(self, obj):
         return obj.is_single_choice
+    
     is_single_choice.boolean = True
     is_single_choice.short_description = "Single Choice"
 
     def is_multi_choice(self, obj):
         return obj.is_multi_choice
+    
     is_multi_choice.boolean = True
     is_multi_choice.short_description = "Multiple Choice"
 
