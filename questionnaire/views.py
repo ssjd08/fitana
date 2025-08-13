@@ -1,7 +1,8 @@
-from rest_framework.permissions import IsAdminUser, AllowAny
+from rest_framework.permissions import IsAdminUser, AllowAny, IsAuthenticated
 from rest_framework.generics import ListCreateAPIView, RetrieveAPIView, RetrieveUpdateDestroyAPIView
-from .serializers import GoalSerializer, GoalWithQuestionsSerializer, QuestionSerializer
-from .models import Goal, Question
+from django.db.models import QuerySet
+from .serializers import GoalSerializer, GoalWithQuestionsSerializer, QuestionSerializer, AnswerSerializer
+from .models import Goal, Question, Answer
 
 
 class GoalListCreateView(ListCreateAPIView):
@@ -44,3 +45,14 @@ class QuestionDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = QuestionSerializer
     queryset = Question.objects.prefetch_related('choises').all()
     lookup_field = 'pk'
+    
+    
+class AnswerListCreateView(ListCreateAPIView):
+    serializer_class = AnswerSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self)->QuerySet:
+        return Answer.objects.filter(user=self.request.user)
+    
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
