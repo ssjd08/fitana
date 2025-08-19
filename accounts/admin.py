@@ -89,7 +89,7 @@ class UserAdmin(BaseUserAdmin):
     # Custom methods
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}".strip() or "No Name"
-    get_full_name.short_description = 'Full Name'
+    get_full_name.short_description = 'Full Name' # type: ignore
     
     def membership_display(self, obj):
         """Display membership with colored badges"""
@@ -103,8 +103,8 @@ class UserAdmin(BaseUserAdmin):
             colors.get(obj.membership, '#000000'),
             obj.get_membership_display()
         )
-    membership_display.short_description = 'Membership'
-    membership_display.admin_order_field = 'membership'
+    membership_display.short_description = 'Membership' # type: ignore
+    membership_display.admin_order_field = 'membership' # type: ignore
 
 
 @admin.register(PhoneOTP)
@@ -127,8 +127,8 @@ class PhoneOTPAdmin(admin.ModelAdmin):
                 '<span style="color: green;">● Valid ({} min left)</span>',
                 minutes_left
             )
-    is_expired_display.short_description = 'Status'
-    is_expired_display.admin_order_field = 'expires_at'
+    is_expired_display.short_description = 'Status' # type: ignore
+    is_expired_display.admin_order_field = 'expires_at' # type: ignore
     
     def get_queryset(self, request):
         """Show most recent OTPs first"""
@@ -141,7 +141,7 @@ class PhoneOTPAdmin(admin.ModelAdmin):
         """Mark selected OTPs as used"""
         updated = queryset.update(is_used=True)
         self.message_user(request, f'{updated} OTP(s) marked as used.')
-    mark_as_used.short_description = "Mark selected OTPs as used"
+    mark_as_used.short_description = "Mark selected OTPs as used" # type: ignore
     
     def delete_expired_otps(self, request, queryset):
         """Delete expired OTPs"""
@@ -149,7 +149,7 @@ class PhoneOTPAdmin(admin.ModelAdmin):
         count = expired_otps.count()
         expired_otps.delete()
         self.message_user(request, f'{count} expired OTP(s) deleted.')
-    delete_expired_otps.short_description = "Delete expired OTPs"
+    delete_expired_otps.short_description = "Delete expired OTPs" # type: ignore
 
 
 # Register the custom UserAdmin
