@@ -1,6 +1,9 @@
+from rest_framework import status
+from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, AllowAny, IsAuthenticated
 from rest_framework.generics import ListCreateAPIView, RetrieveAPIView, RetrieveUpdateDestroyAPIView
 from django.db.models import QuerySet
+
 from .serializers import GoalSerializer, GoalWithQuestionsSerializer, QuestionSerializer, AnswerSerializer
 from .models import Goal, Question, Answer
 
@@ -51,8 +54,23 @@ class AnswerListCreateView(ListCreateAPIView):
     serializer_class = AnswerSerializer
     permission_classes = [IsAuthenticated]
     
-    def get_queryset(self)->QuerySet:
+    def get_queryset(self)->QuerySet: # type: ignore
         return Answer.objects.filter(user=self.request.user)
     
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+    def create(self, request, *args, **kwargs):
+        goal_id = request.data.get("goal")
+        answer_data = request.data.get("answers")
+        
+        if not goal_id or not answer_data:
+            return Response({"error": "goal and answers are required!"})
+        
+        saved_answers = []
+        for ans in answer_data:
+            ans["user"] = request.user.id
+            ans["goal"] = goal_id
+            serializer = AnswerSerializer(data=ans)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            saved_answers.append(serializer.data)
+            
+        return Response({"detail": "Answers saved", "answers": saved_answers}, status=status.HTTP_201_CREATED)
