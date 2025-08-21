@@ -106,6 +106,7 @@ class GoalWithQuestionsSerializer(serializers.ModelSerializer):
         model = Goal
         fields = ["id", "name", "questions"]
         
+<<<<<<< HEAD
 
 
 class ChoiceSerializer(serializers.ModelSerializer):
@@ -118,15 +119,25 @@ class ChoiceSerializer(serializers.ModelSerializer):
 class AnswerSerializer(serializers.ModelSerializer):
     # Input fields
     choice_answer_id = serializers.IntegerField(write_only=True, required=False)
+=======
+        
+class AnswerSerializer(serializers.ModelSerializer):
+    # Accept single choice by ID
+    choice_answer_id = serializers.IntegerField(write_only=True, required=False)
+    # Accept multi choice by IDs
+>>>>>>> bb90e64743f12c4ed5de34b8fc49a6ab51bdfbc8
     multi_choice_ids = serializers.ListField(
         child=serializers.IntegerField(), write_only=True, required=False
     )
 
+<<<<<<< HEAD
     # Output nested serializers
     choice_answer = ChoiceSerializer(read_only=True)
     multi_choice_answer = ChoiceSerializer(many=True, read_only=True)
 
 
+=======
+>>>>>>> bb90e64743f12c4ed5de34b8fc49a6ab51bdfbc8
     class Meta:
         model = Answer
         fields = [
