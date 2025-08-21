@@ -111,7 +111,7 @@ class GoalWithQuestionsSerializer(serializers.ModelSerializer):
 class ChoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Choise
-        fields = ["id", "text"]   # adapt to your fields
+        fields = ["id", "question", "choise"]   # adapt to your fields
 
 
         
