@@ -2,6 +2,8 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows,python,django
 
 db.sqlite3
+# .gitignore
+db.sqlite3
 
 ### Django ###
 *.log
