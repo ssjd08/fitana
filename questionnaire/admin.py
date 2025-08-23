@@ -1,19 +1,19 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.contrib.auth import get_user_model
-from .models import Goal, Question, Choise, Answer
+from .models import Goal, Question, Choice, Answer
 
 User = get_user_model()
 
 # Inline for choices
-class ChoiseInline(admin.TabularInline):
-    model = Choise
+class ChoiceInline(admin.TabularInline):
+    model = Choice
     extra = 2  # Number of empty rows to show
 
     # Only show for choice/multi_choice questions
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        return qs.filter(question__question_type__in=[Question.CHOISE, Question.MULTI_CHOISE])
+        return qs.filter(question__question_type__in=[Question.CHOICE, Question.MULTI_CHOICE])
 
 
 @admin.register(Question)
@@ -21,7 +21,7 @@ class QuestionAdmin(admin.ModelAdmin):
     list_display = ('question', 'goal', 'question_type', 'is_single_choice', 'is_multi_choice')
     list_filter = ('goal', 'question_type')
     search_fields = ('question',)
-    inlines = [ChoiseInline]
+    inlines = [ChoiceInline]
 
     def is_single_choice(self, obj):
         return obj.is_single_choice
@@ -40,10 +40,10 @@ class GoalAdmin(admin.ModelAdmin):
     search_fields = ('name',)
 
 
-@admin.register(Choise)
-class ChoiseAdmin(admin.ModelAdmin):
-    list_display = ('choise', 'question')
-    search_fields = ('choise', 'question__question')
+@admin.register(Choice)
+class ChoiceAdmin(admin.ModelAdmin):
+    list_display = ('choice', 'question')
+    search_fields = ('choice', 'question__question')
 
 
 # Inline for answers (read-only)
@@ -55,7 +55,7 @@ class AnswerInline(admin.TabularInline):
     can_delete = False
 
     def get_multi_choices(self, obj):
-        return ", ".join([c.choise for c in obj.multi_choice_answer.all()])
+        return ", ".join([c.choice for c in obj.multi_choice_answer.all()])
     get_multi_choices.short_description = "Multi Choice Answers" # type: ignore
 
 
@@ -87,9 +87,9 @@ class UserAnswerAdmin(admin.ModelAdmin):
             elif a.numeric_answer is not None:
                 ans = str(a.numeric_answer)
             elif a.choice_answer:
-                ans = a.choice_answer.choise
+                ans = a.choice_answer.choice
             elif a.multi_choice_answer.exists():
-                ans = ", ".join([c.choise for c in a.multi_choice_answer.all()])
+                ans = ", ".join([c.choice for c in a.multi_choice_answer.all()])
             else:
                 ans = "No answer"
             answer_list.append(f"{a.question.question}: {ans}")

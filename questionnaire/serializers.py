@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Question, Choise, Goal, Answer
+from .models import Question, Choice, Goal, Answer
 
 
 class GoalSerializer(serializers.ModelSerializer):
@@ -16,7 +16,7 @@ class QuestionSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
-    choices = serializers.StringRelatedField(source='choises', many=True, read_only=True)
+    choices = serializers.StringRelatedField(source='choices', many=True, read_only=True)
     is_single_choice = serializers.SerializerMethodField()
     is_multi_choice = serializers.SerializerMethodField()
 
@@ -48,9 +48,9 @@ class QuestionSerializer(serializers.ModelSerializer):
 
     def _handle_choice_options(self, question, choice_options):
         """Create/update choices for the question."""
-        question.choises.all().delete()
+        question.choices.all().delete()
         for option in choice_options:
-            Choise.objects.create(question=question, choise=option.strip())
+            Choice.objects.create(question=question, choice=option.strip())
 
     def create(self, validated_data):
         goal_name = validated_data.pop('goal')
@@ -60,7 +60,7 @@ class QuestionSerializer(serializers.ModelSerializer):
 
         question = Question.objects.create(**validated_data)
 
-        if choice_options and question.question_type in [Question.CHOISE, Question.MULTI_CHOISE]:
+        if choice_options and question.question_type in [Question.CHOICE, Question.MULTI_CHOICE]:
             self._handle_choice_options(question, choice_options)
 
         return question
@@ -77,7 +77,7 @@ class QuestionSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
 
-        if choice_options_provided and instance.question_type in [Question.CHOISE, Question.MULTI_CHOISE]:
+        if choice_options_provided and instance.question_type in [Question.CHOICE, Question.MULTI_CHOICE]:
             self._handle_choice_options(instance, choice_options)
 
         return instance
@@ -90,7 +90,7 @@ class QuestionSerializer(serializers.ModelSerializer):
 
 
 class QuestionWithChoicesSerializer(serializers.ModelSerializer):
-    options = serializers.StringRelatedField(source='choises', many=True, read_only=True)
+    options = serializers.StringRelatedField(source='choices', many=True, read_only=True)
 
     class Meta:
         model = Question
@@ -107,8 +107,8 @@ class GoalWithQuestionsSerializer(serializers.ModelSerializer):
 
 class ChoiceSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Choise
-        fields = ["id", "question", "choise"]
+        model = Choice
+        fields = ["id", "question", "choice"]
 
 
 class AnswerSerializer(serializers.ModelSerializer):
@@ -147,14 +147,14 @@ class AnswerSerializer(serializers.ModelSerializer):
 
         if choice_id:
             try:
-                choice = Choise.objects.get(id=choice_id, question=answer.question)
+                choice = Choice.objects.get(id=choice_id, question=answer.question)
                 answer.choice_answer = choice
                 answer.save()
-            except Choise.DoesNotExist:
+            except Choice.DoesNotExist:
                 raise serializers.ValidationError("Invalid choice for this question.")
 
         if multi_ids:
-            choices = Choise.objects.filter(id__in=multi_ids, question=answer.question)
+            choices = Choice.objects.filter(id__in=multi_ids, question=answer.question)
             answer.multi_choice_answer.set(choices)
 
         return answer

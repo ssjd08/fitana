@@ -28,7 +28,7 @@ class GoalDetailView(RetrieveAPIView):
     Retrieve a goal with all its associated questions and choices.
     """
     serializer_class = GoalWithQuestionsSerializer
-    queryset = Goal.objects.prefetch_related("questions__choises").all()  # Fixed: prefetch choices too
+    queryset = Goal.objects.prefetch_related("questions__choices").all()  # Fixed: prefetch choices too
     lookup_field = 'pk'  # Can be changed to 'name' if you want to lookup by goal name
 
 
@@ -46,7 +46,7 @@ class QuestionDetailView(RetrieveUpdateDestroyAPIView):
     Retrieve a question with all its choices.
     """
     serializer_class = QuestionSerializer
-    queryset = Question.objects.prefetch_related('choises').all()
+    queryset = Question.objects.prefetch_related('choices').all()
     lookup_field = 'pk'
     
     
