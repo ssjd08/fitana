@@ -1,6 +1,10 @@
 # Created by https://www.toptal.com/developers/gitignore/api/windows,python,django
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows,python,django
 
+db.sqlite3
+# .gitignore
+db.sqlite3
+
 ### Django ###
 *.log
 *.pot
