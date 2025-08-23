@@ -1,12 +1,13 @@
 from rest_framework import serializers
 from .models import Question, Choise, Goal, Answer
 
+
 class GoalSerializer(serializers.ModelSerializer):
     class Meta:
         model = Goal
         fields = ["id", "name", "description"]
-      
-        
+
+
 class QuestionSerializer(serializers.ModelSerializer):
     goal = serializers.CharField(write_only=True, required=False)
     goal_name = serializers.CharField(source='goal.name', read_only=True)
@@ -32,13 +33,13 @@ class QuestionSerializer(serializers.ModelSerializer):
             "is_single_choice",
             "is_multi_choice"
         ]
-    
+
     def get_is_single_choice(self, obj):
         return obj.is_single_choice
 
     def get_is_multi_choice(self, obj):
         return obj.is_multi_choice
-    
+
     def _get_goal_from_name(self, goal_name):
         try:
             return Goal.objects.get(name=goal_name)
@@ -72,72 +73,57 @@ class QuestionSerializer(serializers.ModelSerializer):
         if goal_name:
             validated_data['goal'] = self._get_goal_from_name(goal_name)
 
-        # Update question fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        # Handle choice options if provided
         if choice_options_provided and instance.question_type in [Question.CHOISE, Question.MULTI_CHOISE]:
             self._handle_choice_options(instance, choice_options)
 
         return instance
-    
+
     def to_representation(self, instance):
-        """Customize the output representation"""
         representation = super().to_representation(instance)
         representation.pop('goal', None)
         representation.pop('choice_options', None)
         return representation
-    
+
 
 class QuestionWithChoicesSerializer(serializers.ModelSerializer):
     options = serializers.StringRelatedField(source='choises', many=True, read_only=True)
-    
+
     class Meta:
-        model = Question   
-        fields = ["id", "question", "question_type", "options"] 
+        model = Question
+        fields = ["id", "question", "question_type", "options"]
 
 
 class GoalWithQuestionsSerializer(serializers.ModelSerializer):
     questions = QuestionWithChoicesSerializer(many=True, read_only=True)
-    
+
     class Meta:
         model = Goal
         fields = ["id", "name", "questions"]
-        
-<<<<<<< HEAD
 
 
 class ChoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Choise
-        fields = ["id", "question", "choise"]   # adapt to your fields
+        fields = ["id", "question", "choise"]
 
 
-        
 class AnswerSerializer(serializers.ModelSerializer):
     # Input fields
     choice_answer_id = serializers.IntegerField(write_only=True, required=False)
-=======
-        
-class AnswerSerializer(serializers.ModelSerializer):
-    # Accept single choice by ID
-    choice_answer_id = serializers.IntegerField(write_only=True, required=False)
-    # Accept multi choice by IDs
->>>>>>> bb90e64743f12c4ed5de34b8fc49a6ab51bdfbc8
     multi_choice_ids = serializers.ListField(
-        child=serializers.IntegerField(), write_only=True, required=False
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False
     )
 
-<<<<<<< HEAD
     # Output nested serializers
     choice_answer = ChoiceSerializer(read_only=True)
     multi_choice_answer = ChoiceSerializer(many=True, read_only=True)
 
-
-=======
->>>>>>> bb90e64743f12c4ed5de34b8fc49a6ab51bdfbc8
     class Meta:
         model = Answer
         fields = [
@@ -156,7 +142,7 @@ class AnswerSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         choice_id = validated_data.pop("choice_answer_id", None)
         multi_ids = validated_data.pop("multi_choice_ids", [])
-        
+
         answer = Answer.objects.create(**validated_data)
 
         if choice_id:
