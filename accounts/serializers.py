@@ -18,8 +18,12 @@ class UserSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'phone', 'birth_date', 'membership']
-        read_only_fields = ['id', 'phone', 'username']  # Phone shouldn't be editable after registration
+        fields = [
+            'id', 'username', 'first_name', 'last_name', 
+            'email', 'phone', 'birth_date', 'membership', 
+            'is_phone_verified' 
+        ]
+        read_only_fields = ['id', 'phone', 'username'] 
 
 
 class SendOTPSerializer(serializers.Serializer):
