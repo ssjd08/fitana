@@ -9,6 +9,9 @@ djangorestframework = "*"
 django-debug-toolbar = "*"
 djangorestframework-simplejwt = "*"
 drf-yasg = "*"
+celery = "*"
+redis = "*"
+pillow = "*"
 
 [dev-packages]
 

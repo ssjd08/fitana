@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Question, Choice, Goal, Answer
+from .models import Question, Choice, Goal, Answer, UserGoal
 
 
 class GoalSerializer(serializers.ModelSerializer):
@@ -16,7 +16,7 @@ class QuestionSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
-    choices = serializers.StringRelatedField(source='choices', many=True, read_only=True)
+    choices = serializers.StringRelatedField(many=True, read_only=True)
     is_single_choice = serializers.SerializerMethodField()
     is_multi_choice = serializers.SerializerMethodField()
 
@@ -158,3 +158,10 @@ class AnswerSerializer(serializers.ModelSerializer):
             answer.multi_choice_answer.set(choices)
 
         return answer
+
+
+class UserGoalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserGoal
+        fields = ['id', 'user', 'goal', 'is_completed']
+        read_only_fields = ['user', 'is_completed']

@@ -8,6 +8,8 @@ from django.contrib.auth import get_user_model
 from .serializers import UserSerializer, SendOTPSerializer, VerifyOTPSerializer
 from .models import PhoneOTP
 from typing import Dict, Any
+# Add this import to your existing imports in views.py
+from rest_framework_simplejwt.exceptions import TokenError
 
 User = get_user_model()
 
@@ -162,12 +164,13 @@ class LogoutView(APIView):
                 {"detail": "Successfully logged out"}, 
                 status=status.HTTP_200_OK
             )
-        except Exception as e:
-            # More detailed error for debugging
+        except TokenError as e:
             return Response(
-                {
-                    "error": "Invalid token",
-                    "detail": str(e) if hasattr(e, 'args') else "Token blacklisting failed"
-                }, 
+                {"error": "Invalid or expired token"}, 
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception:
+            return Response(
+                {"error": "Logout failed"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

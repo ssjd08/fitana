@@ -6,16 +6,20 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import PhoneOTP
 from typing import Dict, Any
+import secrets
+from django.core.cache import cache
+
 
 # Get the User model
 User = get_user_model()
 
-
 class UserSerializer(serializers.ModelSerializer):
+    is_phone_verified = serializers.ReadOnlyField()
+    
     class Meta:
         model = User
         fields = ['id', 'username', 'first_name', 'last_name', 'email', 'phone', 'birth_date', 'membership']
-        read_only_fields = ['id', 'phone']  # Phone shouldn't be editable after registration
+        read_only_fields = ['id', 'phone', 'username']  # Phone shouldn't be editable after registration
 
 
 class SendOTPSerializer(serializers.Serializer):
@@ -28,23 +32,38 @@ class SendOTPSerializer(serializers.Serializer):
     
     def validate_phone(self, value):
         """Validate phone number format"""
+        # Normalize phone number
+        phone = re.sub(r'\D', '', value)  # Remove non-digits
+        if phone.startswith('98'):
+            phone = '0' + phone[2:]
+        elif phone.startswith('+98'):
+            phone = '0' + phone[3:]
+        
         pattern = r"^09\d{9}$"
-        if not re.match(pattern, value):
+        if not re.match(pattern, phone):
             raise serializers.ValidationError(
-                "Phone number must be in format 09XXXXXXXXX (11 digits total)"
+                "Phone number must be in format 09XXXXXXXXX"
             )
-        return value
+        return phone
     
     def create_otp(self, phone):
-        # Delete any existing OTP for this phone
+       # Rate limiting
+        cache_key = f"otp_requests_{phone}"
+        requests = cache.get(cache_key, 0)
+        if requests >= 3:  # Max 3 requests per hour
+            raise serializers.ValidationError(
+                "Too many OTP requests. Please try again later."
+            )
+        
+        cache.set(cache_key, requests + 1, 3600)  # 1 hour
+        
+        # Delete existing OTPs
         PhoneOTP.objects.filter(phone=phone, is_used=False).delete()
         
-        # Generate 6-digit OTP
-        code = str(random.randint(100000, 999999))
+        # Use cryptographically secure random
+        code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
         otp = PhoneOTP.objects.create(phone=phone, code=code)
         
-        # TODO: Integrate with SMS provider (Twilio, Kavenegar, etc.)
-        print(f"DEBUG: Sending OTP {code} to {phone}")
         return otp
     
     def create(self, validated_data):
