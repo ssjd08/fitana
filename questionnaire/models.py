@@ -24,14 +24,14 @@ class Goal(models.Model):
 class Question(models.Model):
     TEXT = 'text'
     NUMBER = 'number'
-    CHOISE = 'choise'
-    MULTI_CHOISE = 'multi_choice'
+    CHOICE = 'choice'
+    MULTI_CHOICE = 'multi_choice'
 
     QUESTION_TYPE_CHOICES = [
         (TEXT, 'Text'),
         (NUMBER, 'number'),
-        (CHOISE, 'single choise'),
-        (MULTI_CHOISE, 'Multiple Choice'),
+        (CHOICE, 'single choice'),
+        (MULTI_CHOICE, 'Multiple Choice'),
     ]
     
     goal = models.ForeignKey(Goal, on_delete=models.SET_NULL , null=True, related_name="questions")
@@ -61,14 +61,14 @@ class Question(models.Model):
     
     @property
     def is_single_choice(self):
-        return self.question_type == self.CHOISE
+        return self.question_type == self.CHOICE
 
     @property
     def is_multi_choice(self):
-        return self.question_type == self.MULTI_CHOISE
+        return self.question_type == self.MULTI_CHOICE
     
 class Choice(models.Model):
-    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name="choises")
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name="choices")
     choice = models.CharField(max_length=255)
     value = models.CharField(max_length=100, blank=True)  # For mapping to system values
     order = models.IntegerField(default=0)
@@ -101,6 +101,8 @@ class UserGoal(models.Model):
     """User's selected goals with their questionnaire responses"""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='user_goals')
     goal = models.ForeignKey(Goal, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     # Status tracking
     STATUS_CHOICES = [

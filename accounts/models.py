@@ -37,14 +37,16 @@ class User(AbstractBaseUser, PermissionsMixin):
     ]
     
     # Add username field for JWT compatibility
-    username = models.CharField(max_length=150, unique=True, blank=True, null=True)
+    username = models.CharField(max_length=150, unique=True, blank=True)
     first_name = models.CharField(max_length=255, blank=True)
     last_name = models.CharField(max_length=255, blank=True)
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=15, unique=True)  # Reduced from 255
+    phone_verified = models.BooleanField(default=False)
     birth_date = models.DateField(null=True, blank=True)
     membership = models.CharField(
         max_length=1, choices=MEMBERSHIP_CHOICES, default=MEMBERSHIP_BRONZE)
+    phone_verified_at = models.DateTimeField(null=True, blank=True)
     
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
@@ -64,6 +66,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return f'{self.first_name} {self.last_name}' if self.first_name or self.last_name else self.phone
 
+
+    @property
+    def is_phone_verified(self):
+        return self.phone_verified_at is not None
+    
     class Meta:
         ordering = ['first_name', 'last_name']
         
@@ -90,6 +97,23 @@ class PhoneOTP(models.Model):
 
     def __str__(self):
         return f"OTP for {self.phone}"
-
+    
+    @classmethod
+    def cleanup_expired(cls):
+        """Remove expired OTP records and return count of deleted records"""
+        expired_otps = cls.objects.filter(expires_at__lt=timezone.now())
+        count, _ = expired_otps.delete()
+        return count
+    
     class Meta:
         ordering = ['-created_at']
+        
+        
+class UserProfile(models.Model):
+    """Extended user profile information"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
+    phone_verified = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
