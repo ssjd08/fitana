@@ -14,16 +14,12 @@ from django.core.cache import cache
 User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
-    is_phone_verified = serializers.ReadOnlyField()
     
     class Meta:
         model = User
-        fields = [
-            'id', 'username', 'first_name', 'last_name', 
-            'email', 'phone', 'birth_date', 'membership', 
-            'is_phone_verified' 
-        ]
-        read_only_fields = ['id', 'phone', 'username'] 
+        fields = ['id', 'username', 'first_name', 'last_name', 'email',
+                  'phone', 'phone_verified', 'birth_date', 'membership']
+        read_only_fields = ['id', 'phone', 'phone_verified']
 
 
 class SendOTPSerializer(serializers.Serializer):
@@ -174,6 +170,11 @@ class VerifyOTPSerializer(serializers.Serializer):
             otp_instance.is_used = True
             otp_instance.save()
             
+            # Mark phone as verified for existing user
+            if not existing_user.phone_verified:
+                existing_user.phone_verified = True
+                existing_user.save()
+            
             return {'user': existing_user, 'is_new': False}
         else:
             # Create new user
@@ -183,11 +184,12 @@ class VerifyOTPSerializer(serializers.Serializer):
             # Use the custom UserManager's create_user method
             user = User.objects.create_user(  # type: ignore
                 phone=phone,
-                username=validated_data.get('username', phone),  # Use phone as username if not provided
+                username=validated_data.get('username', phone),
                 password=validated_data.get('password'),
                 email=validated_data.get('email', ''),
                 first_name=validated_data.get('first_name', ''),
-                last_name=validated_data.get('last_name', '')
+                last_name=validated_data.get('last_name', ''),
+                phone_verified=True  # Set phone as verified for new users
             )
             
             # Mark OTP as used
