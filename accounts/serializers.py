@@ -68,6 +68,8 @@ class SendOTPSerializer(serializers.Serializer):
         code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
         otp = PhoneOTP.objects.create(phone=phone, code=code)
         
+        print(f"sent code: {code} for {phone}")
+        
         return otp
     
     def create(self, validated_data):

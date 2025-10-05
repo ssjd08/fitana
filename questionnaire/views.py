@@ -1,20 +1,32 @@
+from django.db import transaction
+from django.core.cache import cache
+from django.utils import timezone
 from rest_framework import status
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, AllowAny, IsAuthenticated
 from rest_framework.generics import ListCreateAPIView, RetrieveAPIView, RetrieveUpdateDestroyAPIView, CreateAPIView
 from django.db.models import QuerySet
-from django.db import transaction
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.request import Request
 from typing import Any
+import json
+
 
 from .serializers import (
     GoalSerializer, 
     GoalWithQuestionsSerializer, 
-    QuestionSerializer, 
-    AnswerSerializer, 
-    UserGoalSerializer
+    QuestionSerializer,
+    AnonymousQuestionnaireSerializer,
+    CompleteRegistrationSerializer
 )
 from .models import Goal, Question, Answer, UserGoal
+from accounts.serializers import UserSerializer
+from accounts.serializers import VerifyOTPSerializer
+from accounts.serializers import SendOTPSerializer
+
 
 
 class GoalListCreateView(ListCreateAPIView):
@@ -86,141 +98,236 @@ class QuestionDetailView(RetrieveUpdateDestroyAPIView):
             return [IsAdminUser()]
         return [AllowAny()]
 
-
-class AnswerListCreateView(ListCreateAPIView):
-    """
-    List user's answers or create/update answers for questions.
-    """
-    serializer_class = AnswerSerializer
-    permission_classes = [IsAuthenticated]
     
-    def get_queryset(self) -> QuerySet[Answer]:# type: ignore
-        # Handle anonymous users (for Swagger documentation generation)
-        if not self.request.user.is_authenticated:
-            return Answer.objects.none()
-        return Answer.objects.filter(user=self.request.user).select_related(
-            'question', 'choice_answer'
-        ).prefetch_related('multi_choice_answer')
-    
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-
-class BulkAnswerCreateView(CreateAPIView):
+class QuestionnaireSubmitWithOTPView(APIView):
     """
-    Submit multiple answers at once for a questionnaire.
+    Submit questionnaire data and automatically send OTP for verification.
+    This combines questionnaire submission with OTP sending in a single request.
     """
-    permission_classes = [IsAuthenticated]
-    
-    def post(self, request, *args, **kwargs):
-        answers_data = request.data.get("answers", [])
-        
-        if not answers_data:
-            return Response(
-                {"error": "answers field is required and must not be empty"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        saved_answers = []
-        errors = []
-        
-        with transaction.atomic():
-            for i, answer_data in enumerate(answers_data):
-                # Add user to each answer
-                answer_data["user"] = request.user.id
-                
-                serializer = AnswerSerializer(data=answer_data)
-                if serializer.is_valid():
-                    # Check if answer already exists and update it
-                    existing_answer = Answer.objects.filter(
-                        user=request.user,
-                        question_id=answer_data.get('question')
-                    ).first()
-                    
-                    if existing_answer:
-                        # Update existing answer
-                        update_serializer = AnswerSerializer(
-                            existing_answer, 
-                            data=answer_data, 
-                            partial=True
-                        )
-                        if update_serializer.is_valid():
-                            update_serializer.save()
-                            saved_answers.append(update_serializer.data)
-                        else:
-                            errors.append({
-                                "index": i,
-                                "question_id": answer_data.get('question'),
-                                "errors": update_serializer.errors
-                            })
-                    else:
-                        # Create new answer
-                        serializer.save(user=request.user)
-                        saved_answers.append(serializer.data)
-                else:
-                    errors.append({
-                        "index": i,
-                        "question_id": answer_data.get('question'),
-                        "errors": serializer.errors
-                    })
-        
-        if errors:
-            return Response({
-                "detail": "Some answers had validation errors",
-                "saved_answers": saved_answers,
-                "errors": errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
+    permission_classes = []  # No authentication required
+
+    @swagger_auto_schema(
+        request_body=AnonymousQuestionnaireSerializer,
+        responses={
+            201: openapi.Response(
+                description="Questionnaire data saved and OTP sent",
+                examples={
+                    "application/json": {
+                        "message": "Questionnaire data saved and OTP sent to your phone.",
+                        "session_id": "123e4567-e89b-12d3-a456-426614174000",
+                        "phone": "09123456789",
+                        "goal_id": 1,
+                        "answers_count": 3,
+                        "otp_sent": True,
+                        "next_step": "otp_verification",
+                        "instructions": "Enter the OTP code sent to your phone to complete registration"
+                    }
+                }
+            ),
+            400: "Validation errors"
+        },
+        operation_description="""
+        Submit questionnaire answers and automatically send OTP for phone verification. 
+
+        This endpoint will:
+        1. Validate and temporarily store questionnaire data
+        2. Send OTP to the provided phone number
+        3. Return session_id for completing registration
+
+        Request format:
+        {
+            "goal_id": 1,
+            "phone": "09123456789",
+            "answers": [
+                {
+                    "question": 1,
+                    "choice_answer": 1
+                },
+                {
+                    "question": 2,
+                    "text_answer": "John Doe"
+                }
+            ],
+            "first_name": "John",
+            "last_name": "Doe",
+            "email": "john@example.com"
+        }
+        """
+    )
+    def post(self, request):
+        # 1. Validate & save questionnaire
+        serializer = AnonymousQuestionnaireSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        questionnaire_result = serializer.save()  # dict with session_id, phone, goal_id, answers_count
+
+        # 2. Extract phone number
+        phone = questionnaire_result['phone'] # type: ignore
+
+        # 3. Send OTP
+        otp_serializer = SendOTPSerializer(data={'phone': phone})
+        if not otp_serializer.is_valid():
+            return Response(otp_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        otp_serializer.save()
+
+        # 4. Return response
         return Response({
-            "detail": f"Successfully saved {len(saved_answers)} answers",
-            "answers": saved_answers
+            "message": "Questionnaire data saved. Please verify your phone number to complete registration.",
+            "session_id": questionnaire_result['session_id'], # type: ignore
+            "phone": phone,
+            "goal_id": questionnaire_result['goal_id'], # type: ignore
+            "answers_count": questionnaire_result['answers_count'], # type: ignore
+            "otp_sent": True,
+            "next_step": "phone_verification",
+            "instructions": {
+                "step_1": "Verify OTP: POST /auth/verify-otp/ with phone, code, and session_id",
+                "step_2": "Your questionnaire data will be automatically saved to your account"
+            }
         }, status=status.HTTP_201_CREATED)
 
 
-class UserGoalListCreateView(ListCreateAPIView):
+class QuestionnaireStatusView(APIView):
     """
-    List user's goals or create a new user goal.
+    Check the status of a questionnaire session
     """
-    serializer_class = UserGoalSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = []
     
-    def get_queryset(self) -> QuerySet[UserGoal]:# type: ignore
-        # Handle anonymous users (for Swagger documentation generation)
-        if not self.request.user.is_authenticated:
-            return UserGoal.objects.none()
-        return UserGoal.objects.filter(
-            user=self.request.user,
-            is_active=True
-        ).select_related('goal').order_by('-started_at')
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'session_id',
+                openapi.IN_QUERY,
+                description="Session ID from questionnaire submission",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ],
+        responses={
+            200: "Session status",
+            404: "Session not found"
+        }
+    )
+    def get(self, request):
+        session_id = request.query_params.get('session_id')
+        
+        if not session_id:
+            return Response({
+                "error": "session_id parameter is required"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        cache_key = f"questionnaire_session_{session_id}"
+        cached_data_str = cache.get(cache_key)
+        
+        if not cached_data_str:
+            return Response({
+                "error": "Session not found or expired",
+                "message": "Please submit questionnaire again"
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        cached_data = json.loads(cached_data_str)
+        
+        # Try to get TTL, fallback if not supported
+        try:
+            expires_in_minutes = cache.ttl(cache_key) // 60  # type: ignore
+        except AttributeError:
+            # TTL not supported by this cache backend
+            # Calculate approximate remaining time based on creation time
+            from datetime import datetime
+            created_at = datetime.fromisoformat(cached_data['created_at'])
+            current_time = timezone.now()
+            elapsed_minutes = (current_time - created_at).total_seconds() // 60
+            expires_in_minutes = max(0, 60 - elapsed_minutes)  # Assuming 1 hour timeout
+        except Exception:
+            # Fallback if TTL calculation fails
+            expires_in_minutes = None
+        
+        response_data = {
+            "session_id": session_id,
+            "phone": cached_data['phone'],
+            "goal_id": cached_data['goal_id'],
+            "answers_count": len(cached_data['answers']),
+            "created_at": cached_data['created_at'],
+            "status": "pending_verification"
+        }
+        
+        if expires_in_minutes is not None:
+            response_data["expires_in_minutes"] = expires_in_minutes
+        
+        return Response(response_data)
     
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
 
-
-class UserGoalDetailView(RetrieveUpdateDestroyAPIView):
+class EnhancedVerifyOTPView(APIView):
     """
-    Retrieve, update or delete a user goal.
+    Enhanced OTP verification that completes questionnaire registration
     """
-    serializer_class = UserGoalSerializer
-    permission_classes = [IsAuthenticated]
     
-    def get_queryset(self) -> QuerySet[UserGoal]: # type: ignore
-        # Handle anonymous users (for Swagger documentation generation)
-        if not self.request.user.is_authenticated:
-            return UserGoal.objects.none()
-        return UserGoal.objects.filter(user=self.request.user)
-    
-    def perform_update(self, serializer):
-        # Auto-update completed_at when status changes to completed
-        if serializer.validated_data.get('status') == 'completed':
-            from django.utils import timezone
-            serializer.save(completed_at=timezone.now())
-        else:
-            serializer.save()
-    
-    def destroy(self, request, *args, **kwargs):
-        # Soft delete - just mark as inactive
-        instance = self.get_object()
-        instance.is_active = False
-        instance.save()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['phone', 'code'],
+            properties={
+                'phone': openapi.Schema(type=openapi.TYPE_STRING, description='Phone number'),
+                'code': openapi.Schema(type=openapi.TYPE_STRING, description='OTP code'),
+                'session_id': openapi.Schema(type=openapi.TYPE_STRING, description='Questionnaire session ID (optional)'),
+                'username': openapi.Schema(type=openapi.TYPE_STRING, description='Desired username (optional)'),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, description='Password (required for new users)'),
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description='Email (optional)'),
+                'first_name': openapi.Schema(type=openapi.TYPE_STRING, description='First name (optional)'),
+                'last_name': openapi.Schema(type=openapi.TYPE_STRING, description='Last name (optional)'),
+            }
+        ),
+        responses={
+            200: "OTP verified and questionnaire completed",
+            400: "Validation errors"
+        }
+    )
+    def post(self, request):
+        
+        # First verify OTP using existing logic
+        otp_serializer = VerifyOTPSerializer(data=request.data)
+        
+        if not otp_serializer.is_valid():
+            return Response(otp_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Process OTP verification
+        result = otp_serializer.save()
+        user = result['user'] # type: ignore
+        is_new = result['is_new'] # type: ignore
+        
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+        
+        response_data = {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "is_new": is_new,
+            "user": UserSerializer(user).data
+        }
+        
+        # Check if there's a questionnaire session to complete
+        session_id = request.data.get('session_id')
+        if session_id:
+            try:
+                complete_serializer = CompleteRegistrationSerializer(
+                    data={'session_id': session_id}
+                )
+                if complete_serializer.is_valid():
+                    questionnaire_result = complete_serializer.complete_registration(user) # type: ignore
+                    response_data.update({
+                        "questionnaire_completed": True,
+                        "questionnaire_data": questionnaire_result
+                    })
+                else:
+                    response_data.update({
+                        "questionnaire_completed": False,
+                        "questionnaire_error": complete_serializer.errors
+                    })
+            except Exception as e:
+                response_data.update({
+                    "questionnaire_completed": False,
+                    "questionnaire_error": str(e)
+                })
+        
+        return Response(response_data, status=status.HTTP_200_OK)

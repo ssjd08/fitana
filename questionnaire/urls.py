@@ -1,9 +1,8 @@
 from django.urls import path
 from .views import (
     GoalListCreateView, GoalDetailView,
-    QuestionListCreateView, QuestionDetailView,
-    AnswerListCreateView, BulkAnswerCreateView,
-    UserGoalListCreateView, UserGoalDetailView
+    QuestionListCreateView, QuestionDetailView, QuestionnaireStatusView,
+    QuestionnaireSubmitWithOTPView, EnhancedVerifyOTPView
 )
 
 urlpatterns = [
@@ -13,9 +12,13 @@ urlpatterns = [
     path('questions/', QuestionListCreateView.as_view(), name='question-list-create'),
     path('questions/<int:pk>/', QuestionDetailView.as_view(), name='question-detail'),
     
-    path('answers/', AnswerListCreateView.as_view(), name='answer-list-create'),
-    path('answers/bulk/', BulkAnswerCreateView.as_view(), name='bulk-answer-create'),
+    # path('answers/', AnswerListCreateView.as_view(), name='answer-list-create'),
+    # path('answers/bulk/', BulkAnswerCreateView.as_view(), name='bulk-answer-create'),
     
-    path('user-goals/', UserGoalListCreateView.as_view(), name='user-goal-list-create'),
-    path('user-goals/<int:pk>/', UserGoalDetailView.as_view(), name='user-goal-detail'),
+    # path('user-goals/', UserGoalListCreateView.as_view(), name='user-goal-list-create'),
+    # path('user-goals/<int:pk>/', UserGoalDetailView.as_view(), name='user-goal-detail'),
+    
+    path('submit-anonymous/', QuestionnaireSubmitWithOTPView.as_view(), name='anonymous-questionnaire'),
+    path('session-status/', QuestionnaireStatusView.as_view(), name='questionnaire-status'),
+    path('verify-otp/', EnhancedVerifyOTPView.as_view(), name='questionnaire-verify-otp'),
 ]

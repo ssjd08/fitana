@@ -101,6 +101,8 @@ class UserGoal(models.Model):
     """User's selected goals with their questionnaire responses"""
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='user_goals')
     goal = models.ForeignKey(Goal, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     # Status tracking
     STATUS_CHOICES = [

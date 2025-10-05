@@ -1,5 +1,10 @@
 from rest_framework import serializers
 from django.utils import timezone
+from django.db import transaction
+from django.core.cache import cache
+import json
+import uuid
+
 from .models import Question, Choice, Goal, Answer, UserGoal
 
 
@@ -148,15 +153,14 @@ class QuestionSerializer(serializers.ModelSerializer):
 
 
 class AnswerSerializer(serializers.ModelSerializer):
-    # Input fields
-    choice_answer_id = serializers.IntegerField(write_only=True, required=False)
+    choice_answer_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     multi_choice_ids = serializers.ListField(
         child=serializers.IntegerField(),
         write_only=True,
-        required=False
+        required=False,
+        allow_empty=True
     )
 
-    # Output nested serializers
     choice_answer = ChoiceSerializer(read_only=True)
     multi_choice_answer = ChoiceSerializer(many=True, read_only=True)
     question_text = serializers.CharField(source='question.question', read_only=True)
@@ -181,6 +185,7 @@ class AnswerSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         question = attrs.get('question')
+        user = attrs.get('user')
         text_answer = attrs.get('text_answer')
         numeric_answer = attrs.get('numeric_answer')
         choice_answer_id = attrs.get('choice_answer_id')
@@ -188,15 +193,28 @@ class AnswerSerializer(serializers.ModelSerializer):
 
         if not question:
             raise serializers.ValidationError("Question is required")
+        if not user:
+            raise serializers.ValidationError("User is required")
+
+        # Check for existing answer
+        if self.instance is None:  # Only for creation
+            if Answer.objects.filter(user=user, question=question).exists():
+                raise serializers.ValidationError(
+                    "An answer for this user and question already exists."
+                )
 
         # Validate based on question type
         if question.question_type == Question.TEXT:
             if not text_answer:
                 raise serializers.ValidationError("Text answer is required for text questions")
+            if choice_answer_id is not None:
+                raise serializers.ValidationError("Choice answer should not be provided for text questions")
         
         elif question.question_type == Question.NUMBER:
             if numeric_answer is None:
                 raise serializers.ValidationError("Numeric answer is required for number questions")
+            if choice_answer_id is not None:
+                raise serializers.ValidationError("Choice answer should not be provided for number questions")
         
         elif question.question_type == Question.CHOICE:
             if not choice_answer_id:
@@ -263,107 +281,197 @@ class AnswerSerializer(serializers.ModelSerializer):
         return instance
 
 
-class UserGoalSerializer(serializers.ModelSerializer):
-    goal_name = serializers.CharField(source='goal.name', read_only=True)
-    goal_description = serializers.CharField(source='goal.description', read_only=True)
-    bmi = serializers.SerializerMethodField()
-    progress_percentage = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = UserGoal
-        fields = [
-            'id', 
-            'user', 
-            'goal',
-            'goal_name',
-            'goal_description',
-            'status',
-            'fitness_level',
-            'current_weight',
-            'target_weight',
-            'height',
-            'age',
-            'workout_days_per_week',
-            'preferred_workout_duration',
-            'daily_calorie_target',
-            'target_date',
-            'started_at',
-            'completed_at',
-            'is_active',
-            'bmi',
-            'progress_percentage'
-        ]
-        read_only_fields = [
-            'user', 
-            'started_at', 
-            'goal_name', 
-            'goal_description',
-            'bmi',
-            'progress_percentage'
-        ]
-    
-    def get_bmi(self, obj):
-        return obj.calculate_bmi()
-    
-    def get_progress_percentage(self, obj):
-        """Calculate progress percentage based on weight goals"""
-        if obj.current_weight and obj.target_weight:
-            # This is a simple calculation - you might want more sophisticated logic
-            if obj.goal.category in ['weight_loss']:
-                if obj.current_weight <= obj.target_weight:
-                    return 100.0
-                # Calculate progress towards target
-                start_weight = getattr(obj, 'start_weight', obj.current_weight)  # You might want to track this
-                progress = (start_weight - obj.current_weight) / (start_weight - obj.target_weight) * 100
-                return max(0, min(100, progress))
-            elif obj.goal.category in ['weight_gain']:
-                if obj.current_weight >= obj.target_weight:
-                    return 100.0
-                start_weight = getattr(obj, 'start_weight', obj.current_weight)
-                progress = (obj.current_weight - start_weight) / (obj.target_weight - start_weight) * 100
-                return max(0, min(100, progress))
-        return 0.0
-    
-    def validate(self, attrs):
-        # Validate weight goals
-        current_weight = attrs.get('current_weight')
-        target_weight = attrs.get('target_weight')
-        
-        if current_weight and target_weight:
-            if current_weight == target_weight:
-                raise serializers.ValidationError(
-                    "Current weight and target weight cannot be the same"
-                )
-        
-        # Validate age
-        age = attrs.get('age')
-        if age and (age < 13 or age > 100):
-            raise serializers.ValidationError("Age must be between 13 and 100")
-        
-        # Validate workout days
-        workout_days = attrs.get('workout_days_per_week')
-        if workout_days and (workout_days < 1 or workout_days > 7):
-            raise serializers.ValidationError("Workout days per week must be between 1 and 7")
-        
-        return attrs
-
-
-class BulkAnswerSerializer(serializers.Serializer):
-    """Serializer for bulk answer submission"""
+class AnonymousQuestionnaireSerializer(serializers.Serializer):
+    """Serializer for anonymous questionnaire submission"""
+    goal_id = serializers.IntegerField(required=True)
+    phone = serializers.CharField(
+        max_length=11,
+        min_length=11,
+        help_text="Phone number in format 09123456789"
+    )
     answers = serializers.ListField(
-        child=AnswerSerializer(),
+        child=serializers.DictField(),
         min_length=1,
         help_text="List of answers to submit"
     )
     
-    def validate_answers(self, value: list) -> list:
-        """Validate that all answers belong to the same goal"""
+    # Optional user info that might be collected in questionnaire
+    first_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    
+    def validate_phone(self, value):
+        """Validate phone number format"""
+        import re
+        # Normalize phone number
+        phone = re.sub(r'\D', '', value)  # Remove non-digits
+        if phone.startswith('98'):
+            phone = '0' + phone[2:]
+        elif phone.startswith('+98'):
+            phone = '0' + phone[3:]
+        
+        pattern = r"^09\d{9}$"
+        if not re.match(pattern, phone):
+            raise serializers.ValidationError(
+                "Phone number must be in format 09XXXXXXXXX"
+            )
+        return phone
+    
+    def validate_goal_id(self, value):
+        """Validate that the goal exists"""
+        from .models import Goal
+        try:
+            Goal.objects.get(id=value)
+        except Goal.DoesNotExist:
+            raise serializers.ValidationError(f"Goal with id {value} does not exist")
+        return value
+    
+    def validate_answers(self, value):
+        """Validate answers format"""
         if not value:
             raise serializers.ValidationError("At least one answer is required")
         
         # Check for duplicate questions
-        question_ids = [answer_data.get('question') for answer_data in value]
+        question_ids = [answer.get("question") for answer in value]
         if len(question_ids) != len(set(question_ids)):
             raise serializers.ValidationError("Duplicate questions found in answers")
         
+        # Validate each answer has required fields
+        for i, answer in enumerate(value):
+            if not answer.get("question"):
+                raise serializers.ValidationError(f"Answer at index {i} is missing question field")
+        
         return value
+    
+    def validate(self, attrs):
+        """Cross-field validation"""
+        goal_id = attrs.get("goal_id")
+        answers = attrs.get("answers", [])
+        
+        # Validate that all questions belong to the specified goal
+        from .models import Question
+        valid_question_ids = list(
+            Question.objects.filter(goal_id=goal_id).values_list('id', flat=True)
+        )
+        
+        question_ids = [answer.get("question") for answer in answers]
+        invalid_questions = [qid for qid in question_ids if qid not in valid_question_ids]
+        if invalid_questions:
+            raise serializers.ValidationError(
+                f"Questions {invalid_questions} do not belong to goal {goal_id}"
+            )
+        
+        return attrs
+    
+    def save(self, *args, **kwargs):
+        """Save questionnaire data to cache temporarily"""
+        phone = self.validated_data['phone'] # type: ignore
+        
+        # Generate session ID for this submission
+        session_id = str(uuid.uuid4())
+        
+        # Prepare data to cache
+        cache_data = {
+            'goal_id': self.validated_data['goal_id'], # type: ignore
+            'phone': phone,
+            'answers': self.validated_data['answers'], # type: ignore
+            'first_name': self.validated_data.get('first_name', ''), # type: ignore
+            'last_name': self.validated_data.get('last_name', ''), # type: ignore
+            'email': self.validated_data.get('email', ''), # type: ignore
+            'created_at': timezone.now().isoformat(),
+            'session_id': session_id
+        }
+        
+        # Cache for 1 hour
+        cache_key = f"questionnaire_session_{session_id}"
+        cache.set(cache_key, json.dumps(cache_data), timeout=3600)
+        
+        # Also cache by phone for easy retrieval
+        phone_cache_key = f"questionnaire_phone_{phone}"
+        cache.set(phone_cache_key, session_id, timeout=3600)
+        
+        return {
+            'session_id': session_id,
+            'phone': phone,
+            'goal_id': self.validated_data['goal_id'], # type: ignore
+            'answers_count': len(self.validated_data['answers']) # type: ignore
+        }
+
+
+class CompleteRegistrationSerializer(serializers.Serializer):
+    """Serializer to complete registration after OTP verification"""
+    session_id = serializers.UUIDField(required=True)
+    
+    def validate_session_id(self, value):
+        """Validate that session exists in cache"""
+        cache_key = f"questionnaire_session_{value}"
+        cached_data = cache.get(cache_key)
+        
+        if not cached_data:
+            raise serializers.ValidationError(
+                "Session expired or not found. Please submit questionnaire again."
+            )
+        
+        return value
+    
+    def complete_registration(self, user):
+        """Complete user registration with cached questionnaire data"""
+        from django.db import transaction
+        from .models import Answer, UserGoal, Goal
+        
+        session_id = self.validated_data['session_id'] # type: ignore
+        cache_key = f"questionnaire_session_{session_id}"
+        cached_data_str = cache.get(cache_key)
+        
+        if not cached_data_str:
+            raise serializers.ValidationError("Session data not found")
+        
+        cached_data = json.loads(cached_data_str)
+        
+        with transaction.atomic():
+            # Create UserGoal
+            goal = Goal.objects.get(id=cached_data['goal_id'])
+            user_goal, created = UserGoal.objects.get_or_create(
+                user=user,
+                goal=goal,
+                defaults={'created_at': timezone.now()}
+            )
+            
+            # Save answers
+            saved_answers = []
+            for answer_data in cached_data['answers']:
+                # Handle multi_choice_answer field name mapping if needed
+                if "multi_choice_answer" in answer_data:
+                    answer_data["multi_choice_ids"] = answer_data.pop("multi_choice_answer")
+                
+                answer_data["user"] = user.id
+                
+                from .serializers import AnswerSerializer
+                serializer = AnswerSerializer(data=answer_data)
+                if serializer.is_valid():
+                    answer = serializer.save()
+                    saved_answers.append(serializer.data)
+            
+            # Update user progress if available
+            try:
+                from plan.models import UserProgress
+                progress, created = UserProgress.objects.get_or_create(
+                    user=user,
+                    defaults={'current_step': 'goal_selection'}
+                )
+                progress.selected_goal = user_goal
+                progress.mark_step_completed('goal_selection')
+            except ImportError:
+                pass
+            
+            # Clean up cache
+            cache.delete(cache_key)
+            phone_cache_key = f"questionnaire_phone_{cached_data['phone']}"
+            cache.delete(phone_cache_key)
+            
+            return {
+                'user_goal_id': user_goal.id, # type: ignore
+                'goal_name': goal.name,
+                'answers_count': len(saved_answers),
+                'answers': saved_answers
+            }
