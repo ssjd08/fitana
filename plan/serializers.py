@@ -43,13 +43,13 @@ class UserProgressSerializer(serializers.ModelSerializer):
     def get_next_step_url(self, obj):
         """Get URL for next step"""
         step_urls = {
-            'goal_selection': '/api/questionnaire/goals/',
-            'questionnaire': '/api/questionnaire/questions/',
-            'payment_pending': '/api/payment/plans/',
-            'payment_completed': '/api/plans/generate/',
-            'plan_generation': '/api/plans/status/',
-            'plan_ready': '/api/plans/my-plan/',
-            'completed': '/api/plans/my-plan/',
+            'goal_selection': '/questionnaire/goals/',
+            'questionnaire': '/questionnaire/questions/',
+            'payment_pending': '/payment/plans/',
+            'payment_completed': '/plans/generate/',
+            'plan_generation': '/plans/status/',
+            'plan_ready': '/plans/my-plan/',
+            'completed': '/plans/my-plan/',
         }
         return step_urls.get(obj.current_step)
     

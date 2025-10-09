@@ -12,6 +12,8 @@ drf-yasg = "*"
 celery = "*"
 redis = "*"
 pillow = "*"
+requests = "*"
+python-decouple = "*"
 
 [dev-packages]
 
