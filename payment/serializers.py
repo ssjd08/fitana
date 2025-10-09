@@ -1,43 +1,16 @@
 from rest_framework import serializers
 from django.core.validators import RegexValidator
+from django.utils import timezone
 from .models import Payment
 import re
 
 
 class PaymentCreateSerializer(serializers.ModelSerializer):
-    card_number = serializers.CharField(
-        write_only=True,
-        max_length=19,
-        min_length=16,
-        help_text="16-digit card number",
-        validators=[
-            RegexValidator(
-                regex=r'^[\d\s]+$',
-                message="Card number can only contain digits and spaces"
-            )
-        ]
-        )
-    
+ 
     class Meta:
         model = Payment
-        fields = ('amount', 'currency', 'card_number', 'description')
+        fields = ('amount', 'currency')
         
-    def validate_card_number(self, value):
-        """Validate card number format and checksum."""
-        # Remove spaces and validate format
-        clean_number = re.sub(r'\s', '', value)
-        
-        if not clean_number.isdigit():
-            raise serializers.ValidationError("Card number must contain only digits")
-        
-        if len(clean_number) != 16:
-            raise serializers.ValidationError("Card number must be exactly 16 digits")
-        
-        # Basic Luhn algorithm check (optional - you can implement this)
-        if not self._luhn_check(clean_number): # type: ignore
-            raise serializers.ValidationError("Invalid card number")
-        
-        return clean_number
     
     def validate_amount(self, value):
         """Validate payment amount."""
@@ -51,18 +24,31 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
         
         return value
     
-    def _luhn_check(self, card_number):
-        """Simple Luhn algorithm implementation for card validation."""
-        def digits_of(n):
-            return [int(d) for d in str(n)]
+    def validate_currency(self, value):
+        """Validate payment currency."""
+        if value not in ['IRR', 'USD', 'EUR']:
+            raise serializers.ValidationError("Invalid currency")
+        return value
+    
+    def create(self, validated_data):
+        """Create payment with auto-generated description."""
+        user = self.context['request'].user
+        amount = validated_data['amount']
+        currency = validated_data.get('currency', 'IRR')
         
-        digits = digits_of(card_number)
-        odd_digits = digits[-1::-2]
-        even_digits = digits[-2::-2]
-        checksum = sum(odd_digits)
-        for d in even_digits:
-            checksum += sum(digits_of(d*2))
-        return checksum % 10 == 0
+        # Auto-generate description
+        current_time = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+        description = f"User with id {user.id} paying {amount} {currency} on {current_time}"
+        
+        # Create payment instance
+        payment = Payment.objects.create(
+            user=user,
+            amount=amount,
+            currency=currency,
+            description=description
+        )
+        
+        return payment
     
     
 class PaymentDetailSerializer(serializers.ModelSerializer):

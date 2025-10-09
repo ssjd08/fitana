@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import os
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -227,3 +228,31 @@ CACHES = {
         'LOCATION': 'redis://127.0.0.1:6379/1',
     }
 }
+
+try:
+    from decouple import config
+    
+    # Payment Gateway Configuration
+    PAYMENT_GATEWAY = config('PAYMENT_GATEWAY', default='mock')
+    
+    # ZarinPal Configuration
+    ZARINPAL_MERCHANT_ID = config('ZARINPAL_MERCHANT_ID', default='')
+    ZARINPAL_CALLBACK_URL = config('ZARINPAL_CALLBACK_URL', default='http://localhost:8000/payment/verify/')
+    ZARINPAL_SANDBOX = config('ZARINPAL_SANDBOX', default=True, cast=bool)
+    
+except ImportError:
+    # Fallback to os.getenv if python-decouple is not installed
+    PAYMENT_GATEWAY = os.getenv('PAYMENT_GATEWAY', 'mock')
+    
+    # ZarinPal Configuration
+    ZARINPAL_MERCHANT_ID = os.getenv('ZARINPAL_MERCHANT_ID', '')
+    ZARINPAL_CALLBACK_URL = os.getenv('ZARINPAL_CALLBACK_URL', 'http://localhost:8000/payment/verify/')
+    ZARINPAL_SANDBOX = os.getenv('ZARINPAL_SANDBOX', 'True').lower() in ('true', '1', 'yes')
+
+
+# Optional: Print configuration on startup (remove in production)
+if DEBUG:
+    print(f"Payment Gateway: {PAYMENT_GATEWAY}")
+    print(f"ZarinPal Sandbox: {ZARINPAL_SANDBOX}")
+    if PAYMENT_GATEWAY == 'zarinpal':
+        print(f"ZarinPal Merchant ID: {ZARINPAL_MERCHANT_ID[:8]}...") # type: ignore
